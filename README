@@ -1,6 +1,12 @@
 This is an example skeleton for developing out-of-tree Varnish vmods.
 
-When running configure, specify the location of your Varnish source tree like this:
-./configure VARNISHSRC=DIR
+Usage:
+./configure VARNISHSRC=DIR [VMODDIR=DIR]
 
-Optionally you can also set the vmod install dir by adding VMODDIR=DIR (defaults to LIBDIR/varnish/vmods, which would become /usr/local/lib/varnish/vmods on most platforms).
+VARNISHSRCDIR is the directory of the Varnish source tree for which to
+compile your vmod. Both the VARNISHSRCDIR and VARNISHSRCDIR/include
+will be added to the include search paths for your module.
+
+Optionally you can also set the vmod install dir by adding VMODDIR=DIR
+(defaults to LIBDIR/varnish/vmods, which would become
+/usr/local/lib/varnish/vmods on most platforms).
