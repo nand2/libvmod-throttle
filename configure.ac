@@ -1,6 +1,6 @@
 AC_PREREQ(2.59)
 AC_COPYRIGHT([Copyright (c) 2011 Varnish Software AS])
-AC_INIT([libvmod_example], [0.1])
+AC_INIT([libvmod-example], [0.1])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR(src/vmod.vcc)
 AM_CONFIG_HEADER(config.h)
@@ -21,6 +21,9 @@ AC_PROG_CPP
 AC_PROG_INSTALL
 AC_PROG_LIBTOOL
 AC_PROG_MAKE_SET
+
+# Check for pkg-config
+PKG_PROG_PKG_CONFIG
 
 # Checks for header files.
 AC_HEADER_STDC
@@ -43,7 +46,10 @@ AC_CHECK_FILE([$VARNISHSRC/include/varnishapi.h],
 # vmod installation dir
 AC_ARG_VAR([VMODDIR], [vmod installation directory @<:@LIBDIR/varnish/vmods@:>@])
 if test "x$VMODDIR" = x; then
-	VMODDIR=$libdir/varnish/vmods
+	VMODDIR=`pkg-config --variable=vmoddir varnishapi`
+	if test "x$VMODDIR" = x; then
+		AC_MSG_FAILURE([Can't determine vmod installation directory])
+	fi
 fi
 
 AC_CONFIG_FILES([

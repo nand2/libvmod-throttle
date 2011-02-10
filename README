@@ -8,5 +8,7 @@ compile your vmod. Both the VARNISHSRCDIR and VARNISHSRCDIR/include
 will be added to the include search paths for your module.
 
 Optionally you can also set the vmod install dir by adding VMODDIR=DIR
-(defaults to LIBDIR/varnish/vmods, which would become
-/usr/local/lib/varnish/vmods on most platforms).
+(defaults to the pkg-config discovered directory from your Varnish
+installation).
+
+
