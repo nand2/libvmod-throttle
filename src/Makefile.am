@@ -15,4 +15,4 @@ vcc_if.c vcc_if.h: $(VARNISHSRC)/lib/libvmod_std/vmod.py $(top_srcdir)/src/vmod.
 
 EXTRA_DIST = vmod.vcc
 
-CLEANFILES = $(builddir)vcc_if.c $(builddir)/vcc_if.h
+CLEANFILES = $(builddir)/vcc_if.c $(builddir)/vcc_if.h
