@@ -1,6 +1,6 @@
 AC_PREREQ(2.59)
 AC_COPYRIGHT([Copyright (c) 2011 Varnish Software AS])
-AC_INIT([libvmod-example], [0.1])
+AC_INIT([libvmod-example], [trunk])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR(src/vmod_example.vcc)
 AM_CONFIG_HEADER(config.h)
@@ -41,6 +41,12 @@ VARNISHSRC=`cd $VARNISHSRC && pwd`
 AC_CHECK_FILE([$VARNISHSRC/include/varnishapi.h],
 	[],
 	[AC_MSG_FAILURE(["$VARNISHSRC" is not a Varnish source directory])]
+)
+
+# Check that varnishtest is built in the varnish source directory
+AC_CHECK_FILE([$VARNISHSRC/bin/varnishtest/varnishtest],
+	[],
+	[AC_MSG_FAILURE([Can't find "$VARNISHSRC/bin/varnishtest/varnishtest". Please build your varnish source directory])]
 )
 
 # vmod installation dir

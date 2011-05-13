@@ -1,0 +1,22 @@
+varnishtest "Test example vmod"
+
+server s1 {
+       rxreq
+       txresp
+} -start
+
+varnish v1 -vcl+backend {
+	import example from "${vmod_topbuild}/src/.libs/libvmod_example.so";
+
+	sub vcl_deliver {
+		set resp.http.val = example.abs(2-3);
+	}
+} -start
+
+client c1 {
+	txreq -url "/"
+	rxresp
+	expect resp.http.val == "1"
+}
+
+client c1 -run
