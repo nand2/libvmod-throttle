@@ -1,5 +1,4 @@
-VMOD_TESTS = \
-	test01.vtc
+VMOD_TESTS = *.vtc
 .PHONY: $(VMOD_TESTS)
 
 *.vtc:
