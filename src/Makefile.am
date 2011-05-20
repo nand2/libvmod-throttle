@@ -16,7 +16,6 @@ vcc_if.c vcc_if.h: $(VARNISHSRC)/lib/libvmod_std/vmod.py $(top_srcdir)/src/vmod_
 	@PYTHON@ $(VARNISHSRC)/lib/libvmod_std/vmod.py $(top_srcdir)/src/vmod_example.vcc
 
 EXTRA_DIST = \
-	$(MYTESTS) \
 	vmod_example.vcc
 
 CLEANFILES = $(builddir)/vcc_if.c $(builddir)/vcc_if.h

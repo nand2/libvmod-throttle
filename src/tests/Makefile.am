@@ -1,8 +1,11 @@
-MYTESTS = \
+VMOD_TESTS = \
 	test01.vtc
-.PHONY: $(MYTESTS)
+.PHONY: $(VMOD_TESTS)
 
 *.vtc:
 	cd $(VARNISHSRC)/bin/varnishtest && ./varnishtest -D vmod_topbuild=$(abs_top_builddir) $(abs_srcdir)/$@
 
-check: $(MYTESTS)
+check: $(VMOD_TESTS)
+
+EXTRA_DIST = \
+	$(VMOD_TESTS)
