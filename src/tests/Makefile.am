@@ -2,7 +2,7 @@ VMOD_TESTS = *.vtc
 .PHONY: $(VMOD_TESTS)
 
 *.vtc:
-	cd $(VARNISHSRC)/bin/varnishtest && ./varnishtest -D vmod_topbuild=$(abs_top_builddir) $(abs_srcdir)/$@
+	$(VARNISHSRC)/bin/varnishtest/varnishtest -Dvarnishd=$(VARNISHSRC)/bin/varnishd/varnishd -Dvmod_topbuild=$(abs_top_builddir) $@
 
 check: $(VMOD_TESTS)
 
