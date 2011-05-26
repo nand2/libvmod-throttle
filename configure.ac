@@ -22,6 +22,13 @@ AC_PROG_INSTALL
 AC_PROG_LIBTOOL
 AC_PROG_MAKE_SET
 
+# Check for rst utilities
+AC_CHECK_PROGS(RST2MAN, [rst2man rst2man.py], "no")
+if test "x$RST2MAN" = "xno"; then
+	AC_MSG_WARN([rst2man not found - not building man pages])
+fi
+AM_CONDITIONAL(HAVE_RST2MAN, [test "x$RST2MAN" != "xno"])
+
 # Check for pkg-config
 PKG_PROG_PKG_CONFIG
 
@@ -62,5 +69,6 @@ AC_CONFIG_FILES([
 	Makefile
 	src/Makefile
 	src/tests/Makefile
+	man/Makefile
 ])
 AC_OUTPUT
