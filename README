@@ -1,6 +1,6 @@
 This is an example skeleton for developing out-of-tree Varnish
 vmods. It implements the "Hello, World!" as a vmod callback. Not
-particular useful in good hello world tradition, but demonstrates how
+particularly useful in good hello world tradition, but demonstrates how
 to get the glue around a vmod working.
 
 The source tree is based on autotools to configure the building, and
@@ -10,13 +10,13 @@ using the varnishtest tool.
 Usage:
 ./configure VARNISHSRC=DIR [VMODDIR=DIR]
 
-VARNISHSRCDIR is the directory of the Varnish source tree for which to
-compile your vmod. Both the VARNISHSRCDIR and VARNISHSRCDIR/include
+VARNISHSRC is the directory of the Varnish source tree for which to
+compile your vmod. Both the VARNISHSRC and VARNISHSRC/include
 will be added to the include search paths for your module.
 
-Optionally you can also set the vmod install dir by adding VMODDIR=DIR
-(defaults to the pkg-config discovered directory from your Varnish
-installation).
+Optionally you can also set the vmod install directory by adding
+VMODDIR=DIR (defaults to the pkg-config discovered directory from your
+Varnish installation).
 
 Make targets:
 make - builds the vmod
