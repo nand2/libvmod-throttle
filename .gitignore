@@ -6,6 +6,7 @@ Makefile.in
 *.lo
 *.la
 *~
+*.[1-9]
 
 /aclocal.m4
 /autom4te.cache/
