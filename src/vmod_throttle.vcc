@@ -1,0 +1,3 @@
+Module throttle
+Init init_function
+Function INT is_allowed()
