@@ -21,7 +21,12 @@ import throttle;
 DESCRIPTION
 ===========
 
-This vmod will allow you to set rate limiting, on several different time windows. If a time window limit was reached, this vmod will return you the time to wait before this call will be authorized.
+This vmod most obvious uses would be to handle denial of services by a single user, and to set rate limits to API calls.
+
+This vmod will allow you to set rate limiting, on several different time windows, per path/IP/whatever you want. If a time window limit was reached, this vmod will return you the time to wait before this call will be authorized.
+With this return information, you can handle rate limit overflow by either abruptly returning an error, or by actually waiting the necessary time if this time is inferior to X, for a smoother rate limit overflow handling.
+Please note that at the moment, there is no native way (AFAIK) to wait within Varnish (and no, using usleep() in the VCL is a *bad* idea), so you'll have to hack your way to it, e.g. redirect to a nodejs server that will wait for you and come back later.
+I'll try to see if I can find a way within Varnish, e.g. with adding a new state in the caching state machine, which would be sleepAndRestart;
 
 FUNCTIONS
 =========
@@ -38,9 +43,20 @@ Return value
 Description
 	Returns 0.0 if the call was authorized, or the time to wait if one of the time window limit was reached.
 Example
+	Prevent a single user to make a denial of service by punching through the cache: limit calls by IP, max 2 req/s, 20 req/min, 200 req/hour.
         ::
 
-                set resp.http.X-throttle-wait = throttle.is_allowed("ip:" + client.ip + ":api:/path", 2, 20, 200);
+                if(throttle.is_allowed("ip:" + client.ip", 2, 20, 200) > 0s) {
+ 			     	error 500 "Calm down";
+				}
+
+	API rate limiting: limit calls by IP and API call, max 2 req/s, 20 req/min, 200 req/hour.
+        ::
+
+                if(throttle.is_allowed("ip:" + client.ip" + ":api:[apiname]", 2, 20, 200) > 0s) {
+ 			     	error 500 "Calm down";
+				}
+
 
 INSTALLATION
 ============
