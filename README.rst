@@ -41,21 +41,23 @@ Prototype
 Return value
 	DURATION
 Description
-	Returns 0.0 if the call was authorized, or the time to wait if one of the time window limit was reached.
+    Returns 0.0 if the call was authorized, or the time to wait if one of the time window limit was reached.
 Example
-	Prevent a single user to make a denial of service by punching through the cache: limit calls by IP, max 2 req/s, 20 req/min, 200 req/hour.
-        ::
+    Prevent a single user to make a denial of service by punching through the cache: limit calls by IP, max 2 req/s, 20 req/min, 200 req/hour.::
 
+            sub vcl_miss {
                 if(throttle.is_allowed("ip:" + client.ip", 2, 20, 200) > 0s) {
- 			     	error 500 "Calm down";
-				}
+                        error 500 "Calm down";
+                }
+            }
 
-	API rate limiting: limit calls by IP and API call, max 2 req/s, 20 req/min, 200 req/hour.
-        ::
+    API rate limiting: limit calls by IP and API call, max 2 req/s, 20 req/min, 200 req/hour.::
 
+            sub vcl_recv {
                 if(throttle.is_allowed("ip:" + client.ip" + ":api:[apiname]", 2, 20, 200) > 0s) {
- 			     	error 500 "Calm down";
-				}
+                       error 500 "Calm down";
+                }
+            }
 
 
 INSTALLATION
