@@ -5,21 +5,29 @@
 
 #include "vcc_if.h"
 
+//Individual call
 struct vmodth_call {
   double time;
   struct vmodth_call *next;
   struct vmodth_call *prev;
 };
 
+//Call window
+struct vmodth_call_win {
+  //Def
+  int length;
+  int max_calls;
+  //Status
+  int nb_calls;
+  struct vmodth_call *last_call;
+};
+
+//Call set
 struct vmodth_calls {
   struct vmodth_call* first;
   struct vmodth_call* last;
-  int nb_calls_sec;
-  struct vmodth_call* last_call_sec;
-  int nb_calls_min;
-  struct vmodth_call* last_call_min;
-  int nb_calls_hour;
-  struct vmodth_call* last_call_hour;
+  struct vmodth_call_win* wins;
+  int nb_wins;
 };
 
 int
@@ -30,29 +38,29 @@ init_function(struct vmod_priv *priv, const struct VCL_conf *conf)
 
 
 // Private: Update the window counter (e.g. the last minute calls counter)
-void _vmod_update_window_counter(struct vmodth_call** last_window_call, int* window_counter, int window_length, double now) {
-  while((*last_window_call) && (*last_window_call)->time < now - window_length) {
-      (*last_window_call) = (*last_window_call)->prev;
-      (*window_counter)--;
+void _vmod_update_window_counter(struct vmodth_call_win* call_win, double now) {
+  while(call_win->last_call && call_win->last_call->time < now - call_win->length) {
+      call_win->last_call = call_win->last_call->prev;
+      call_win->nb_calls--;
   }
 }
 
 // Private: Return the amount of time to wait to be allowed in this time window
-double _vmod_get_time_wait_for_window_compliance(int nb_window_call, int window_call_limit, struct vmodth_call* last_window_call, int window_length, double now) {
+double _vmod_get_time_wait_for_window_compliance(struct vmodth_call_win* call_win, double now) {
   double result = 0.0;
 
-  if(nb_window_call >= window_call_limit) {
-    result = window_length - (now - last_window_call->time);
+  if(call_win->nb_calls >= call_win->max_calls) {
+    result = call_win->length - (now - call_win->last_call->time);
   }
 
   return result;
 }
 
 // Private: Update the window counter (e.g. the last minute calls counter)
-void _vmod_increment_window_counter(struct vmodth_call* new_call, struct vmodth_call** last_window_call, int* window_counter) {
-  (*window_counter)++;
-  if(*last_window_call == NULL) {
-    *last_window_call = new_call;
+void _vmod_increment_window_counter(struct vmodth_call* new_call, struct vmodth_call_win* call_win) {
+  call_win->nb_calls++;
+  if(call_win->last_call == NULL) {
+    call_win->last_call = new_call;
   }  
 }
 
@@ -75,7 +83,7 @@ void _vmod_remove_older_entries(struct vmodth_calls* calls, int max_window_lengt
 
 // Public: is_allowed VCL command
 double
-vmod_is_allowed(struct sess *sp, struct vmod_priv *pc, struct sockaddr_storage *ip, const char* key, int call_limit_per_sec, int call_limit_per_min, int call_limit_per_hour)
+vmod_is_allowed(struct sess *sp, struct vmod_priv *pc, const char* calls_throttle_key, int call_limit_per_sec, int call_limit_per_min, int call_limit_per_hour)
 {
   struct vmodth_calls *calls;
 	double result = 0;
@@ -89,12 +97,18 @@ vmod_is_allowed(struct sess *sp, struct vmod_priv *pc, struct sockaddr_storage *
     calls = ((struct vmodth_calls*)pc->priv);
     calls->first = NULL;
     calls->last = NULL;
-    calls->nb_calls_sec = 0;
-    calls->last_call_sec = NULL;
-    calls->nb_calls_min = 0;
-    calls->last_call_min = NULL;
-    calls->nb_calls_hour = 0;
-    calls->last_call_hour = NULL;
+    calls->nb_wins = 3;
+    calls->wins = malloc(sizeof(struct vmodth_call_win)*calls->nb_wins);
+    for(int i = 0; i < calls->nb_wins; i++) {
+      calls->wins[i].nb_calls = 0;
+      calls->wins[i].last_call = NULL;
+    }
+    calls->wins[0].length = 1;
+    calls->wins[0].max_calls = call_limit_per_sec;
+    calls->wins[1].length = 60;
+    calls->wins[1].max_calls = call_limit_per_min;
+    calls->wins[2].length = 3600;
+    calls->wins[2].max_calls = call_limit_per_hour;
   }
 
   //Get time
@@ -104,23 +118,18 @@ vmod_is_allowed(struct sess *sp, struct vmod_priv *pc, struct sockaddr_storage *
   double now = tv.tv_sec+tv.tv_usec/1000000.0;
 
   //Update the windows counters and pointers, with the current time
-  _vmod_update_window_counter(&calls->last_call_sec, &calls->nb_calls_sec, 1, now);
-  _vmod_update_window_counter(&calls->last_call_min, &calls->nb_calls_min, 60, now);
-  _vmod_update_window_counter(&calls->last_call_hour, &calls->nb_calls_hour, 3600, now);
+  for(int i = 0; i < calls->nb_wins; i++) {
+    _vmod_update_window_counter(&calls->wins[i], now);
+  }
 
   //Now lets check if we are allowed
   //If we are not, let's return how much time we should wait before being allowed
-  double sec_win_wait = _vmod_get_time_wait_for_window_compliance(calls->nb_calls_sec, call_limit_per_sec, calls->last_call_sec, 1, now);
-  if(sec_win_wait > result) {
-    result = sec_win_wait;
-  }
-  double min_win_wait = _vmod_get_time_wait_for_window_compliance(calls->nb_calls_min, call_limit_per_min, calls->last_call_min, 60, now);
-  if(min_win_wait > result) {
-    result = min_win_wait;
-  }
-  double hour_win_wait = _vmod_get_time_wait_for_window_compliance(calls->nb_calls_hour, call_limit_per_hour, calls->last_call_hour, 3600, now);
-  if(hour_win_wait > result) {
-    result = hour_win_wait;
+  double win_wait;
+  for(int i = 0; i < calls->nb_wins; i++) {
+    win_wait = _vmod_get_time_wait_for_window_compliance(&calls->wins[i], now);
+    if(win_wait > result) {
+      result = win_wait;
+    }
   }
   if(result > 0.0) {
     return result;
@@ -141,9 +150,9 @@ vmod_is_allowed(struct sess *sp, struct vmod_priv *pc, struct sockaddr_storage *
   }
 
   //Increment the windows counters and update if necessary their pointers
-  _vmod_increment_window_counter(new_call, &calls->last_call_sec, &calls->nb_calls_sec);
-  _vmod_increment_window_counter(new_call, &calls->last_call_min, &calls->nb_calls_min);
-  _vmod_increment_window_counter(new_call, &calls->last_call_hour, &calls->nb_calls_hour);
+  for(int i = 0; i < calls->nb_wins; i++) {
+    _vmod_increment_window_counter(new_call, &calls->wins[i]);
+  }
 
   //Remove the older entries older than the maximum window we are tracking, 1h
   _vmod_remove_older_entries(calls, 3600);
