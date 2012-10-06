@@ -21,12 +21,13 @@ import throttle;
 DESCRIPTION
 ===========
 
-This vmod most obvious uses would be to handle denial of services by a single user, and to set rate limits to API calls.
+This vmod most obvious uses would be to handle denial of services by a single user (or bot) punching through the cache, or to set rate limits to API calls you provide.
 
 This vmod will allow you to set rate limiting, on several different time windows, per path/IP/whatever you want. If a time window limit was reached, this vmod will return you the time to wait before this call will be authorized.
-With this return information, you can handle rate limit overflow by either abruptly returning an error, or by actually waiting the necessary time if this time is inferior to X, for a smoother rate limit overflow handling.
-Please note that at the moment, there is no native way (AFAIK) to wait within Varnish (and no, using usleep() in the VCL is a *bad* idea), so you'll have to hack your way to it, e.g. redirect to a nodejs server that will wait for you and come back later.
-I'll try to see if I can find a way within Varnish, e.g. with adding a new state in the caching state machine, which would be sleepAndRestart;
+With this return information, you can handle rate limit overflow by either abruptly returning an error, or by actually waiting the necessary time if you deems it reasonable, for a smoother rate limit overflow handling.
+
+Please note that at the moment, there is no native way (AFAIK) to wait within Varnish (and no, using sleep() in the VCL is a *bad* idea), so you'll have to hack your way to it, e.g. redirect to a nodejs server that will wait for you and come back later.
+I'll try to see if I can hack a way within Varnish, e.g. with adding a new state in the caching state machine, which would be sleepAndRestart;
 
 FUNCTIONS
 =========
