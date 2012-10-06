@@ -7,26 +7,37 @@
 
 //Individual call
 struct vmodth_call {
+  //Call time
   double time;
+  //next call
   struct vmodth_call *next;
+  //prev call
   struct vmodth_call *prev;
 };
 
 //Call window
 struct vmodth_call_win {
-  //Def
+  //Def: Win length
   int length;
+  //Def: Max calls in this time win
   int max_calls;
-  //Status
+  //Status: Nb of calls done in this win
   int nb_calls;
+  //Status: Pointer to the older call in this win
   struct vmodth_call *last_call;
 };
 
 //Call set
 struct vmodth_calls {
+  //First call
   struct vmodth_call* first;
+  //Last call
   struct vmodth_call* last;
+  //Nb of calls
+  int nb_calls;
+  //Limit windows
   struct vmodth_call_win* wins;
+  //Nb of windows
   int nb_wins;
 };
 
@@ -65,19 +76,23 @@ void _vmod_increment_window_counter(struct vmodth_call* new_call, struct vmodth_
 }
 
 // Private: Remove older entries
-void _vmod_remove_older_entries(struct vmodth_calls* calls, int max_window_length) {
+void _vmod_remove_older_entries(struct vmodth_calls* calls) {
   struct vmodth_call *prev;
+  int max_win_max_calls = 0;
 
-  while(calls->last->prev) {
-    if(calls->last->time < calls->first->time - max_window_length) {
-      prev = calls->last->prev;
-      free(calls->last);
-      calls->last = prev;
-      prev->next = NULL;
+  //Get the biggest of the max calls of the different time window
+  for(int i = 0; i < calls->nb_wins; i++) {
+    if(calls->wins[i].max_calls > max_win_max_calls) {
+      max_win_max_calls = calls->wins[i].max_calls;
     }
-    else {
-      break;
-    }
+  }
+
+  while(calls->nb_calls > max_win_max_calls) {
+    prev = calls->last->prev;
+    free(calls->last);
+    calls->last = prev;
+    prev->next = NULL;
+    calls->nb_calls--;
   }
 }
 
@@ -97,6 +112,7 @@ vmod_is_allowed(struct sess *sp, struct vmod_priv *pc, const char* calls_throttl
     calls = ((struct vmodth_calls*)pc->priv);
     calls->first = NULL;
     calls->last = NULL;
+    calls->nb_calls = 0;
     calls->nb_wins = 3;
     calls->wins = malloc(sizeof(struct vmodth_call_win)*calls->nb_wins);
     for(int i = 0; i < calls->nb_wins; i++) {
@@ -148,14 +164,15 @@ vmod_is_allowed(struct sess *sp, struct vmod_priv *pc, const char* calls_throttl
   if(calls->last == NULL) {
     calls->last = new_call;
   }
+  calls->nb_calls++;
 
   //Increment the windows counters and update if necessary their pointers
   for(int i = 0; i < calls->nb_wins; i++) {
     _vmod_increment_window_counter(new_call, &calls->wins[i]);
   }
 
-  //Remove the older entries older than the maximum window we are tracking, 1h
-  _vmod_remove_older_entries(calls, 3600);
+  //Remove the older entries
+  _vmod_remove_older_entries(calls);
 
   return result;
 }
