@@ -41,6 +41,7 @@ Prototype
                 is_allowed(STRING key, STRING window_limits)
 Arguments
     key: A unique key that will identify what you are throttling. Can be used in may ways. See the examples below.
+    
     window_limits: A list of different rate limits you want to put on this call. The syntax is the following: "[nb_of_calls]req/[duration][durations_size], ...". Example: "3req/s, 10req/30s, 30req/5m, 100req/h". Please note that we are using the Varnish duration size identifiers: s, m (and not mn/min), h, d.
 Return value
 	DURATION
