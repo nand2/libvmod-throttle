@@ -8,7 +8,7 @@ Varnish Throttling Module
 
 :Author: Nicolas Deschildre
 :Date: 2012-10-06
-:Version: 
+:Version: 0.1
 :Manual section: 3
 
 SYNOPSIS
@@ -19,7 +19,7 @@ import throttle;
 DESCRIPTION
 ===========
 
-NO PRODUCTION READY YET! Work as defined, but API not frozen, and some memory management remains to be done.
+NO PRODUCTION READY YET! Work as defined, but API not totally frozen, and some memory management remains to be done.
 
 This vmod most obvious uses would be to handle denial of services by a single user (or bot) punching through the cache, or to set rate limits to API calls you provide.
 
@@ -38,27 +38,30 @@ is_allowed
 Prototype
         ::
 
-                is_allowed(STRING key, INT max_calls_per_sec, INT max_calls_per_min, INT max_calls_per_hour)
+                is_allowed(STRING key, STRING window_limits)
+Arguments
+    key: A unique key that will identify what you are throttling. Can be used in may ways. See the examples below.
+    window_limits: A list of different rate limits you want to put on this call. The syntax is the following: "[nb_of_calls]req/[duration][durations_size], ...". Example: "3req/s, 10req/30s, 30req/5m, 100req/h". Please note that we are using the Varnish duration size identifiers: s, m (and not mn/min), h, d.
 Return value
 	DURATION
 Description
     Returns 0.0 if the call was authorized, or the time to wait if one of the time window limit was reached.
 Example
-    Prevent a single user (or crazy googlebot) to make a denial of service by punching through the cache: limit calls by IP, max 2 req/s, 20 req/min, 200 req/hour, only for non-static assets.::
+    Prevent a single user (or crazy googlebot) to make a denial of service by punching through the cache: limit MISS calls on non-static assets by IP, max 3 req/s, 10 req/30s, 30 req/5m::
 
             sub vcl_miss {
                 if(req.url !~ "\.(jpg|jpeg|png|gif|ico|swf|css|js|html|htm)$") {
-                    if(throttle.is_allowed("ip:" + client.ip, 2, 20, 200) > 0s) {
+                    if(throttle.is_allowed("ip:" + client.ip, "3req/s, 10req/30s, 30req/5m") > 0s) {
                             error 429 "Calm down";
                     }
                 }
             }
 
-    API rate limiting: limit calls by IP and API call, max 2 req/s, 20 req/min, 200 req/hour.::
+    API rate limiting: limit calls by IP and API call, max 2 req/s, 100 req/2h, 1000 req/d.::
 
             sub vcl_recv {
                 if(req.url ~ "^/my_api_path/") {
-                    if(throttle.is_allowed("ip:" + client.ip" + ":api:" + req.url, 2, 20, 200) > 0s) {
+                    if(throttle.is_allowed("ip:" + client.ip" + ":api:" + req.url, "2req/s, 100req/2h, 1000req/d") > 0s) {
                            error 429 "Calm down";
                     }
                 }
@@ -117,6 +120,5 @@ TODO
 ====
 
 * Concurrency issues (mutexes)
-* Flexible window sizes and number
 * Garbage collector
 * Test files

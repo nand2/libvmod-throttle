@@ -64,7 +64,7 @@ _vmod_hash(unsigned char *str) {
 }
 
 // Private: Fetch or create the call set from the given key
-struct vmodth_calls* _vmod_get_call_set_from_key(struct vmodth_calls_set* calls_set, char* key, int call_limit_per_sec, int call_limit_per_min, int call_limit_per_hour) {
+struct vmodth_calls* _vmod_get_call_set_from_key(struct vmodth_calls_set* calls_set, char* key, char* window_limits) {
   struct vmodth_calls* result = NULL;
   int hash_key;
 
@@ -83,25 +83,100 @@ struct vmodth_calls* _vmod_get_call_set_from_key(struct vmodth_calls_set* calls_
 
   //If not found, we have to create this new call set
   if(!result) {
+    //First we do the parsing of the windows. If it fails, we will stop.
+    struct vmodth_call_win* parsed_wins = NULL;
+    int parsed_win_count = 0;
+    int parsed_max = 0;
+    int parsed_length = 0;
+    char c;
+    while(c = *window_limits++) {
+      //Init variables
+      parsed_max = 0;
+      parsed_length = 0;
+
+      //Get rid of any whitespaces
+      while(c == ' ') {
+        c = *window_limits++;
+      }
+
+      //Expecting a number
+      while(48 <= c && c <= 57) {
+        parsed_max = parsed_max*10 + (c - 48);
+        c = *window_limits++;
+      }
+      if(parsed_max == 0) {
+        break;
+      }
+
+      //Get rid of any whitespaces
+      while(c == ' ') {
+        c = *window_limits++;
+      }
+
+      //Expecting the string "req/"
+      if(strncmp(--window_limits, "req/", 4) != 0) {
+        break;
+      }
+      window_limits+=4;
+      c = *window_limits++;
+
+      //Expecting either a number and a duration qualitifer (s,m,h,d), or a duration qualitifer
+      while(48 <= c && c <= 57) {
+        parsed_length = parsed_length*10 + (c - 48);
+        c = *window_limits++;
+      }
+      if(parsed_length == 0) {
+        parsed_length = 1;
+      }
+      if(c == 'm') {
+        parsed_length *= 60;
+      }
+      else if(c == 'h') {
+        parsed_length *= 3600;
+      }
+      else if(c == 'd') {
+        parsed_length *= 24*3600;
+      }
+
+      //Then expecting the next char to be either NULL or the ',' separator
+      c = *window_limits++;
+      if(c != 0 && c != ',') {
+        break;
+      }
+
+      //Now let's create the new win struct
+      parsed_win_count++;
+      if(parsed_win_count == 0) {
+        parsed_wins = malloc(sizeof(struct vmodth_call_win));
+      }
+      else {
+        parsed_wins = realloc(parsed_wins, sizeof(struct vmodth_call_win) * parsed_win_count);
+      }
+      parsed_wins[parsed_win_count - 1].length = parsed_length;
+      parsed_wins[parsed_win_count - 1].max_calls = parsed_max;
+      parsed_wins[parsed_win_count - 1].nb_calls = 0;
+      parsed_wins[parsed_win_count - 1].last_call = NULL;
+
+      //Finally, if the current character is null, just stop here
+      if(c == 0) {
+        break;
+      }
+    }
+
+    //If we failed to parse any window, return NULL
+    if(parsed_win_count == 0) {
+      return result;
+    }
+
     result = malloc(sizeof(struct vmodth_calls));
     AN(result);
     result->key = malloc(strlen(key) + 1);
-    strncpy(result->key, key, strlen(key));
+    strncpy(result->key, key, strlen(key) + 1);
     result->first = NULL;
     result->last = NULL;
     result->nb_calls = 0;
-    result->nb_wins = 3;
-    result->wins = malloc(sizeof(struct vmodth_call_win)*result->nb_wins);
-    for(int i = 0; i < result->nb_wins; i++) {
-      result->wins[i].nb_calls = 0;
-      result->wins[i].last_call = NULL;
-    }
-    result->wins[0].length = 1;
-    result->wins[0].max_calls = call_limit_per_sec;
-    result->wins[1].length = 60;
-    result->wins[1].max_calls = call_limit_per_min;
-    result->wins[2].length = 3600;
-    result->wins[2].max_calls = call_limit_per_hour;
+    result->nb_wins = parsed_win_count;
+    result->wins = parsed_wins;
 
     //Place it, in first position
     result->next = calls_set->hashmap[hash_key];
@@ -188,7 +263,7 @@ init_function(struct vmod_priv *pc, const struct VCL_conf *conf)
 
 // Public: is_allowed VCL command
 double
-vmod_is_allowed(struct sess *sp, struct vmod_priv *pc, const char* key, int call_limit_per_sec, int call_limit_per_min, int call_limit_per_hour)
+vmod_is_allowed(struct sess *sp, struct vmod_priv *pc, const char* key, const char* window_limits)
 {
   struct vmodth_calls_set *calls_set;
   struct vmodth_calls *calls;
@@ -197,7 +272,11 @@ vmod_is_allowed(struct sess *sp, struct vmod_priv *pc, const char* key, int call
   //Get the call set for this given key
   calls_set = ((struct vmodth_calls_set*)pc->priv);
   AN(calls_set);
-  calls = _vmod_get_call_set_from_key(calls_set, key, call_limit_per_sec, call_limit_per_min, call_limit_per_hour);
+  calls = _vmod_get_call_set_from_key(calls_set, key, window_limits);
+  //calls can be NULL if the parsing of the windows failed
+  if(calls == NULL) {
+    return -1.0;
+  }
 
   //Get time
   //TODO: first a faster one, let's avoid a syscall. Find and use the request time.
