@@ -48,7 +48,7 @@ Example
 
             sub vcl_miss {
                 if(req.url !~ "\.(jpg|jpeg|png|gif|ico|swf|css|js|html|htm)$") {
-                    if(throttle.is_allowed("ip:" + client.ip", 2, 20, 200) > 0s) {
+                    if(throttle.is_allowed("ip:" + client.ip, 2, 20, 200) > 0s) {
                             error 429 "Calm down";
                     }
                 }
@@ -112,3 +112,11 @@ libvmod-example project. See LICENSE for details.
 
 * Copyright (c) 2012 Nicolas Deschildre
 * Copyright (c) 2011 Varnish Software
+
+TODO
+====
+
+* Concurrency issues (mutexes)
+* Flexible window sizes and number
+* Garbage collector
+* Test files

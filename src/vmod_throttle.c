@@ -19,7 +19,7 @@ struct vmodth_call {
 struct vmodth_call_win {
   //Def: Win length
   int length;
-  //Def: Max calls in this time win
+  //Def: Max nb of calls in this time win
   int max_calls;
   //Status: Nb of calls done in this win
   int nb_calls;
@@ -143,18 +143,23 @@ _vmod_increment_window_counter(struct vmodth_call* new_call, struct vmodth_call_
 
 // Private: Remove older entries
 void 
-_vmod_remove_older_entries(struct vmodth_calls* calls) {
+_vmod_remove_older_entries(struct vmodth_calls* calls, double now) {
   struct vmodth_call *prev;
   int max_win_max_calls = 0;
+  int max_win_length = 0;
 
-  //Get the biggest of the max calls of the different time window
+  //Get the biggest of the max nb calls of the different time windows, and the
+  //biggest window length
   for(int i = 0; i < calls->nb_wins; i++) {
     if(calls->wins[i].max_calls > max_win_max_calls) {
       max_win_max_calls = calls->wins[i].max_calls;
     }
+    if(calls->wins[i].length > max_win_length) {
+      max_win_length = calls->wins[i].length;
+    }
   }
 
-  while(calls->nb_calls > max_win_max_calls) {
+  while(calls->nb_calls > max_win_max_calls || calls->last->time < now - max_win_length) {
     prev = calls->last->prev;
     free(calls->last);
     calls->last = prev;
@@ -195,7 +200,7 @@ vmod_is_allowed(struct sess *sp, struct vmod_priv *pc, const char* key, int call
   calls = _vmod_get_call_set_from_key(calls_set, key, call_limit_per_sec, call_limit_per_min, call_limit_per_hour);
 
   //Get time
-  //TODO: first a faster one, let's avoid a syscall
+  //TODO: first a faster one, let's avoid a syscall. Find and use the request time.
   struct timeval tv;
   gettimeofday(&tv, NULL);
   double now = tv.tv_sec+tv.tv_usec/1000000.0;
@@ -239,7 +244,7 @@ vmod_is_allowed(struct sess *sp, struct vmod_priv *pc, const char* key, int call
   }
 
   //Remove the older entries
-  _vmod_remove_older_entries(calls);
+  _vmod_remove_older_entries(calls, now);
 
   return result;
 }
