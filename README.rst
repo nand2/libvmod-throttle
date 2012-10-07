@@ -38,11 +38,11 @@ is_allowed
 Prototype
         ::
 
-                is_allowed(STRING key, STRING window_limits)
+                is_allowed(STRING key, STRING rate_limits)
 Arguments
     key: A unique key that will identify what you are throttling. Can be used in may ways. See the examples below.
-    
-    window_limits: A list of different rate limits you want to put on this call. The syntax is the following: "[nb_of_calls]req/[duration][durations_size], ...". Example: "3req/s, 10req/30s, 30req/5m, 100req/h". Please note that we are using the Varnish duration size identifiers: s, m (and not mn/min), h, d.
+
+    rate_limits: A list of different rate limits you want to put on this call. The syntax is the following: "[nb_of_calls]req/[duration][durations_size], ...". Example: "3req/s, 10req/30s, 30req/5m, 100req/h". Please note that we are using the Varnish duration size identifiers: s, m (and not mn/min), h, d. WARNING: You cannot define different rate_limits for a same key. If you do, only the one given in the first call will be used. See API rate limiting example below.
 Return value
 	DURATION
 Description
@@ -58,15 +58,25 @@ Example
                 }
             }
 
-    API rate limiting: limit calls by IP and API call, max 2 req/s, 100 req/2h, 1000 req/d.::
+    API rate limiting: limit calls by IP and API call: max 2 req/s, 100 req/2h, 1000 req/d. If an API-key is given, allow more.::
 
             sub vcl_recv {
                 if(req.url ~ "^/my_api_path/") {
-                    if(throttle.is_allowed("ip:" + client.ip" + ":api:" + req.url, "2req/s, 100req/2h, 1000req/d") > 0s) {
+                    //Consider using libvmod-redis to share apikey infos between Varnish && your api key management app
+                    if(req.http.X-apikey *is valid*) {
+                        if(throttle.is_allowed("ip:" + client.ip" + ":api:" + req.url + ":auth", "5req/s, 10000req/d") > 0s) {
                            error 429 "Calm down";
+                        }
+                    else
+                    {
+                        if(throttle.is_allowed("ip:" + client.ip" + ":api:" + req.url, "2req/s, 100req/2h, 1000req/d") > 0s) {
+                           error 429 "Calm down";
+                        }
                     }
                 }
             }
+
+    WARNING: You cannot set 2 differents set of rate limits for a same key. (If you do, only one will be used, and the other will be ignored). In this example, simply add some extra text to the key to differentiate the authentificated calls from the non-authentificated ones.
 
 
 INSTALLATION
@@ -120,6 +130,5 @@ libvmod-example project. See LICENSE for details.
 TODO
 ====
 
-* Concurrency issues (mutexes)
 * Garbage collector
 * Test files

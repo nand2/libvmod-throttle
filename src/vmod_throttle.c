@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <pthread.h>
 
 #include "vrt.h"
 #include "bin/varnishd/cache.h"
@@ -51,6 +52,13 @@ struct vmodth_calls_set {
   struct vmodth_calls* hashmap[4096];
 };
 
+//Global rwlock, for all read/modification operations on the data structure
+pthread_rwlock_t vmodth_rwlock;
+#define LOCK_READ() assert(pthread_rwlock_rdlock(&vmodth_rwlock) == 0);
+#define LOCK_WRITE() assert(pthread_rwlock_wrlock(&vmodth_rwlock) == 0);
+#define UNLOCK() pthread_rwlock_unlock(&vmodth_rwlock);
+
+
 // Private: the djb2 string hash algorithm
 unsigned long
 _vmod_hash(unsigned char *str) {
@@ -72,6 +80,7 @@ struct vmodth_calls* _vmod_get_call_set_from_key(struct vmodth_calls_set* calls_
   hash_key = _vmod_hash(key) & 0xfff;
 
   //Search in the hash bucket
+  LOCK_READ();
   struct vmodth_calls* cur = calls_set->hashmap[hash_key];
   while(cur) {
     if(strcmp(cur->key, key) == 0) {
@@ -80,6 +89,7 @@ struct vmodth_calls* _vmod_get_call_set_from_key(struct vmodth_calls_set* calls_
     }
     cur = cur->next;
   }
+  UNLOCK();
 
   //If not found, we have to create this new call set
   if(!result) {
@@ -179,8 +189,10 @@ struct vmodth_calls* _vmod_get_call_set_from_key(struct vmodth_calls_set* calls_
     result->wins = parsed_wins;
 
     //Place it, in first position
+    LOCK_WRITE();
     result->next = calls_set->hashmap[hash_key];
     calls_set->hashmap[hash_key] = result;
+    UNLOCK();
   }
 
   return result;
@@ -189,10 +201,12 @@ struct vmodth_calls* _vmod_get_call_set_from_key(struct vmodth_calls_set* calls_
 // Private: Update the window counter (e.g. the last minute calls counter)
 void 
 _vmod_update_window_counter(struct vmodth_call_win* call_win, double now) {
+  LOCK_WRITE();
   while(call_win->last_call && call_win->last_call->time < now - call_win->length) {
     call_win->last_call = call_win->last_call->prev;
     call_win->nb_calls--;
   }
+  UNLOCK();
 }
 
 // Private: Return the amount of time to wait to be allowed in this time window
@@ -200,9 +214,11 @@ double
 _vmod_get_time_wait_for_window_compliance(struct vmodth_call_win* call_win, double now) {
   double result = 0.0;
 
+  LOCK_READ();
   if(call_win->nb_calls >= call_win->max_calls) {
     result = call_win->length - (now - call_win->last_call->time);
   }
+  UNLOCK();
 
   return result;
 }
@@ -210,10 +226,12 @@ _vmod_get_time_wait_for_window_compliance(struct vmodth_call_win* call_win, doub
 // Private: Update the window counter (e.g. the last minute calls counter)
 void 
 _vmod_increment_window_counter(struct vmodth_call* new_call, struct vmodth_call_win* call_win) {
+  LOCK_WRITE();
   call_win->nb_calls++;
   if(call_win->last_call == NULL) {
     call_win->last_call = new_call;
-  }  
+  }
+  UNLOCK();
 }
 
 // Private: Remove older entries
@@ -234,6 +252,7 @@ _vmod_remove_older_entries(struct vmodth_calls* calls, double now) {
     }
   }
 
+  LOCK_WRITE();
   while(calls->nb_calls > max_win_max_calls || calls->last->time < now - max_win_length) {
     prev = calls->last->prev;
     free(calls->last);
@@ -241,6 +260,7 @@ _vmod_remove_older_entries(struct vmodth_calls* calls, double now) {
     prev->next = NULL;
     calls->nb_calls--;
   }
+  UNLOCK();
 }
 
 // Public: Vmod init function, initialize the data structure
@@ -249,6 +269,11 @@ init_function(struct vmod_priv *pc, const struct VCL_conf *conf)
 {
   struct vmodth_calls_set *calls_set;
 
+  //Init the rwlock
+  pthread_rwlock_init(&vmodth_rwlock, NULL);
+
+  //Initialize the data structure
+  LOCK_WRITE();
   calls_set = ((struct vmodth_calls_set*)pc->priv);
   if (!calls_set) {
     pc->priv = malloc(sizeof(struct vmodth_calls_set));
@@ -257,6 +282,7 @@ init_function(struct vmod_priv *pc, const struct VCL_conf *conf)
     calls_set = ((struct vmodth_calls_set*)pc->priv); 
     memset(calls_set->hashmap, 0, sizeof(calls_set->hashmap));
   }
+  UNLOCK();
 
   return (0);
 }
@@ -304,6 +330,7 @@ vmod_is_allowed(struct sess *sp, struct vmod_priv *pc, const char* key, const ch
 
   //We are authorized
   //Add the call in the call list
+  LOCK_WRITE();
   struct vmodth_call* new_call = malloc(sizeof(struct vmodth_call));
   new_call->time = now;
   new_call->next = calls->first;
@@ -316,6 +343,7 @@ vmod_is_allowed(struct sess *sp, struct vmod_priv *pc, const char* key, const ch
     calls->last = new_call;
   }
   calls->nb_calls++;
+  UNLOCK();
 
   //Increment the windows counters and update if necessary their pointers
   for(int i = 0; i < calls->nb_wins; i++) {
