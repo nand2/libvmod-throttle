@@ -27,37 +27,102 @@ struct vmodth_call_win {
   struct vmodth_call *last_call;
 };
 
-//Call set
+//Call set, identified by a key
 struct vmodth_calls {
-  //First call
-  struct vmodth_call* first;
-  //Last call
-  struct vmodth_call* last;
-  //Nb of calls
-  int nb_calls;
-  //Limit windows
+  //Def: Key
+  char* key;
+  //Def: Limit windows
   struct vmodth_call_win* wins;
-  //Nb of windows
+  //Def: Nb of windows
   int nb_wins;
+  //Status: Linked list, first call
+  struct vmodth_call* first;
+  //Status: Linked list, last call
+  struct vmodth_call* last;
+  //Status: Next call set
+  struct vmodth_calls* next;
+  //Cache: Nb of calls
+  int nb_calls;
 };
 
-int
-init_function(struct vmod_priv *priv, const struct VCL_conf *conf)
-{
-	return (0);
+//Set of all the call sets
+struct vmodth_calls_set {
+  //Hashmap of the call sets
+  struct vmodth_calls* hashmap[4096];
+};
+
+// Private: the djb2 string hash algorithm
+unsigned long
+_vmod_hash(unsigned char *str) {
+  unsigned long hash = 5381;
+  int c;
+
+  while (c = *str++)
+    hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
+
+  return hash;
 }
 
+// Private: Fetch or create the call set from the given key
+struct vmodth_calls* _vmod_get_call_set_from_key(struct vmodth_calls_set* calls_set, char* key, int call_limit_per_sec, int call_limit_per_min, int call_limit_per_hour) {
+  struct vmodth_calls* result = NULL;
+  int hash_key;
+
+  //Get the hash key from the key
+  hash_key = _vmod_hash(key) & 0xfff;
+
+  //Search in the hash bucket
+  struct vmodth_calls* cur = calls_set->hashmap[hash_key];
+  while(cur) {
+    if(strcmp(cur->key, key) == 0) {
+      result = cur;
+      break;
+    }
+    cur = cur->next;
+  }
+
+  //If not found, we have to create this new call set
+  if(!result) {
+    result = malloc(sizeof(struct vmodth_calls));
+    AN(result);
+    result->key = malloc(strlen(key) + 1);
+    strncpy(result->key, key, strlen(key));
+    result->first = NULL;
+    result->last = NULL;
+    result->nb_calls = 0;
+    result->nb_wins = 3;
+    result->wins = malloc(sizeof(struct vmodth_call_win)*result->nb_wins);
+    for(int i = 0; i < result->nb_wins; i++) {
+      result->wins[i].nb_calls = 0;
+      result->wins[i].last_call = NULL;
+    }
+    result->wins[0].length = 1;
+    result->wins[0].max_calls = call_limit_per_sec;
+    result->wins[1].length = 60;
+    result->wins[1].max_calls = call_limit_per_min;
+    result->wins[2].length = 3600;
+    result->wins[2].max_calls = call_limit_per_hour;
+
+    //Place it, in first position
+    result->next = calls_set->hashmap[hash_key];
+    calls_set->hashmap[hash_key] = result;
+  }
+
+  return result;
+}
 
 // Private: Update the window counter (e.g. the last minute calls counter)
-void _vmod_update_window_counter(struct vmodth_call_win* call_win, double now) {
+void 
+_vmod_update_window_counter(struct vmodth_call_win* call_win, double now) {
   while(call_win->last_call && call_win->last_call->time < now - call_win->length) {
-      call_win->last_call = call_win->last_call->prev;
-      call_win->nb_calls--;
+    call_win->last_call = call_win->last_call->prev;
+    call_win->nb_calls--;
   }
 }
 
 // Private: Return the amount of time to wait to be allowed in this time window
-double _vmod_get_time_wait_for_window_compliance(struct vmodth_call_win* call_win, double now) {
+double 
+_vmod_get_time_wait_for_window_compliance(struct vmodth_call_win* call_win, double now) {
   double result = 0.0;
 
   if(call_win->nb_calls >= call_win->max_calls) {
@@ -68,7 +133,8 @@ double _vmod_get_time_wait_for_window_compliance(struct vmodth_call_win* call_wi
 }
 
 // Private: Update the window counter (e.g. the last minute calls counter)
-void _vmod_increment_window_counter(struct vmodth_call* new_call, struct vmodth_call_win* call_win) {
+void 
+_vmod_increment_window_counter(struct vmodth_call* new_call, struct vmodth_call_win* call_win) {
   call_win->nb_calls++;
   if(call_win->last_call == NULL) {
     call_win->last_call = new_call;
@@ -76,7 +142,8 @@ void _vmod_increment_window_counter(struct vmodth_call* new_call, struct vmodth_
 }
 
 // Private: Remove older entries
-void _vmod_remove_older_entries(struct vmodth_calls* calls) {
+void 
+_vmod_remove_older_entries(struct vmodth_calls* calls) {
   struct vmodth_call *prev;
   int max_win_max_calls = 0;
 
@@ -96,36 +163,36 @@ void _vmod_remove_older_entries(struct vmodth_calls* calls) {
   }
 }
 
+// Public: Vmod init function, initialize the data structure
+int
+init_function(struct vmod_priv *pc, const struct VCL_conf *conf)
+{
+  struct vmodth_calls_set *calls_set;
+
+  calls_set = ((struct vmodth_calls_set*)pc->priv);
+  if (!calls_set) {
+    pc->priv = malloc(sizeof(struct vmodth_calls_set));
+    AN(pc->priv);
+    pc->free = free;
+    calls_set = ((struct vmodth_calls_set*)pc->priv); 
+    memset(calls_set->hashmap, 0, sizeof(calls_set->hashmap));
+  }
+
+  return (0);
+}
+
 // Public: is_allowed VCL command
 double
-vmod_is_allowed(struct sess *sp, struct vmod_priv *pc, const char* calls_throttle_key, int call_limit_per_sec, int call_limit_per_min, int call_limit_per_hour)
+vmod_is_allowed(struct sess *sp, struct vmod_priv *pc, const char* key, int call_limit_per_sec, int call_limit_per_min, int call_limit_per_hour)
 {
+  struct vmodth_calls_set *calls_set;
   struct vmodth_calls *calls;
 	double result = 0;
 
-  //Init data structure
-  calls = ((struct vmodth_calls*)pc->priv);
-  if (!calls) {
-    pc->priv = malloc(sizeof(struct vmodth_calls));
-    AN(pc->priv);
-    pc->free = free;
-    calls = ((struct vmodth_calls*)pc->priv);
-    calls->first = NULL;
-    calls->last = NULL;
-    calls->nb_calls = 0;
-    calls->nb_wins = 3;
-    calls->wins = malloc(sizeof(struct vmodth_call_win)*calls->nb_wins);
-    for(int i = 0; i < calls->nb_wins; i++) {
-      calls->wins[i].nb_calls = 0;
-      calls->wins[i].last_call = NULL;
-    }
-    calls->wins[0].length = 1;
-    calls->wins[0].max_calls = call_limit_per_sec;
-    calls->wins[1].length = 60;
-    calls->wins[1].max_calls = call_limit_per_min;
-    calls->wins[2].length = 3600;
-    calls->wins[2].max_calls = call_limit_per_hour;
-  }
+  //Get the call set for this given key
+  calls_set = ((struct vmodth_calls_set*)pc->priv);
+  AN(calls_set);
+  calls = _vmod_get_call_set_from_key(calls_set, key, call_limit_per_sec, call_limit_per_min, call_limit_per_hour);
 
   //Get time
   //TODO: first a faster one, let's avoid a syscall

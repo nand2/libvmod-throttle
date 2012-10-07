@@ -6,8 +6,6 @@ vmod_throttle
 Varnish Throttling Module
 -------------------------
 
-NOT FINISHED YET! No per-key support yet, and the API is not frozen yet. Please come back later.
-
 :Author: Nicolas Deschildre
 :Date: 2012-10-06
 :Version: 
@@ -20,6 +18,8 @@ import throttle;
 
 DESCRIPTION
 ===========
+
+NO PRODUCTION READY YET! Work as defined, but API not frozen, and some memory management remains to be done.
 
 This vmod most obvious uses would be to handle denial of services by a single user (or bot) punching through the cache, or to set rate limits to API calls you provide.
 
@@ -44,19 +44,23 @@ Return value
 Description
     Returns 0.0 if the call was authorized, or the time to wait if one of the time window limit was reached.
 Example
-    Prevent a single user to make a denial of service by punching through the cache: limit calls by IP, max 2 req/s, 20 req/min, 200 req/hour.::
+    Prevent a single user (or crazy googlebot) to make a denial of service by punching through the cache: limit calls by IP, max 2 req/s, 20 req/min, 200 req/hour, only for non-static assets.::
 
             sub vcl_miss {
-                if(throttle.is_allowed("ip:" + client.ip", 2, 20, 200) > 0s) {
-                        error 500 "Calm down";
+                if(req.url !~ "\.(jpg|jpeg|png|gif|ico|swf|css|js|html|htm)$") {
+                    if(throttle.is_allowed("ip:" + client.ip", 2, 20, 200) > 0s) {
+                            error 429 "Calm down";
+                    }
                 }
             }
 
     API rate limiting: limit calls by IP and API call, max 2 req/s, 20 req/min, 200 req/hour.::
 
             sub vcl_recv {
-                if(throttle.is_allowed("ip:" + client.ip" + ":api:[apiname]", 2, 20, 200) > 0s) {
-                       error 500 "Calm down";
+                if(req.url ~ "^/my_api_path/") {
+                    if(throttle.is_allowed("ip:" + client.ip" + ":api:" + req.url, 2, 20, 200) > 0s) {
+                           error 429 "Calm down";
+                    }
                 }
             }
 
