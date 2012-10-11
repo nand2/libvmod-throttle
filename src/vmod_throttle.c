@@ -22,10 +22,10 @@ struct vmodth_call_win {
   int length;
   //Def: Max nb of calls in this time win
   int max_calls;
-  //Status: Nb of calls done in this win
-  int nb_calls;
   //Status: Pointer to the older call in this win
   struct vmodth_call *last_call;
+  //Cache: Nb of calls done in this win
+  int nb_calls;
 };
 
 //Call set, identified by a key
@@ -263,10 +263,41 @@ _vmod_remove_older_entries(struct vmodth_calls* calls, double now) {
   UNLOCK();
 }
 
+// Private: Free all memory
+void
+_vmod_free_all(void* data) {
+  struct vmodth_calls_set *calls_set;
+  struct vmodth_calls *calls;
+  struct vmodth_call *call;
+  
+  //Seek and destroy. Mwahahahahh
+  calls_set = ((struct vmodth_calls_set*)data);
+  for(int i = 0; i < 4096; i++) {
+    calls = calls_set->hashmap[i];
+    while(calls) {
+      //Free call entries
+      call = calls->last;
+      while(call) {
+        calls->last = call->prev;
+        free(call);
+        call = calls->last;
+      }
+
+      //Free wins
+      free(calls->wins);
+
+      //Free calls itself
+      calls_set->hashmap[i] = calls->next;
+      free(calls);
+      calls = calls_set->hashmap[i];
+    }
+  }
+  free(data);
+}
+
 // Public: Vmod init function, initialize the data structure
 int
-init_function(struct vmod_priv *pc, const struct VCL_conf *conf)
-{
+init_function(struct vmod_priv *pc, const struct VCL_conf *conf) {
   struct vmodth_calls_set *calls_set;
 
   //Init the rwlock
@@ -278,7 +309,8 @@ init_function(struct vmod_priv *pc, const struct VCL_conf *conf)
   if (!calls_set) {
     pc->priv = malloc(sizeof(struct vmodth_calls_set));
     AN(pc->priv);
-    pc->free = free;
+    //Is this ever called?
+    pc->free = _vmod_free_all;
     calls_set = ((struct vmodth_calls_set*)pc->priv); 
     memset(calls_set->hashmap, 0, sizeof(calls_set->hashmap));
   }
@@ -289,8 +321,7 @@ init_function(struct vmod_priv *pc, const struct VCL_conf *conf)
 
 // Public: is_allowed VCL command
 double
-vmod_is_allowed(struct sess *sp, struct vmod_priv *pc, const char* key, const char* window_limits)
-{
+vmod_is_allowed(struct sess *sp, struct vmod_priv *pc, const char* key, const char* window_limits) {
   struct vmodth_calls_set *calls_set;
   struct vmodth_calls *calls;
 	double result = 0;
@@ -352,6 +383,36 @@ vmod_is_allowed(struct sess *sp, struct vmod_priv *pc, const char* key, const ch
 
   //Remove the older entries
   _vmod_remove_older_entries(calls, now);
+
+  return result;
+}
+
+// Public: memory_usage VCL command, used for debugging
+int
+vmod_memory_usage(struct sess *sp, struct vmod_priv *pc) {
+  int result = 0;
+  struct vmodth_calls_set *calls_set;
+  struct vmodth_calls *calls;
+  struct vmodth_call *call;
+
+  //First the size of the call_set
+  result += sizeof(struct vmodth_calls_set);
+  
+  //Then the size of the calls
+  calls_set = ((struct vmodth_calls_set*)pc->priv);
+  for(int i = 0; i < 4096; i++) {
+    calls = calls_set->hashmap[i];
+    while(calls) {
+      //result += calls->nb_calls * sizeof(struct vmodth_call);
+      call = calls->last;
+      while(call) {
+        result += sizeof(struct vmodth_call);
+        call = call->prev;
+      }
+      result += calls->nb_wins * sizeof(struct vmodth_call_win);
+      calls = calls->next;
+    }
+  }
 
   return result;
 }
