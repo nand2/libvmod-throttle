@@ -102,7 +102,7 @@ This would reduce the maximum memory consumption, with 10,000 differents IP per 
 
 With the following example, we are theorically still open to distributed denial of service due to this vmod, but with the required number of necessary clients to consume all memory, it is much more likely that your backend services will fall and crash first. (And remember, we only use at maximum a fixed amount of memory per key, whatever the number of calls for this key).
 
-When we begin to be vulnerable to denial of service by a single user is when a single user can have an unlimited number of keys:
+When we begin to be vulnerable to denial of service by a single user is when a single user can have an unlimited number of keys::
 
         if(throttle.is_allowed("ip:" + client.ip + ":path:" + req.url, "2req/s, 30req/h") > 0s)
 
