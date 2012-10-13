@@ -19,15 +19,16 @@ import throttle;
 DESCRIPTION
 ===========
 
-NO PRODUCTION READY YET! Work as defined, but API not totally frozen, and some memory management remains to be done.
+Current status: Finished, going through tests before going to production. You're welcome to test it, but note that it was not used in production yet, AFAIK.
 
-This vmod most obvious uses would be to handle denial of services by a single user (or bot) punching through the cache, or to set rate limits to API calls you provide.
+This vmod most obvious uses are to handle denial of services by a single user (or bot) punching through the cache, or to set rate limits to API calls you provide.
 
-This vmod will allow you to set rate limiting, on several different time windows, per path/IP/whatever you want. If a time window limit was reached, this vmod will return you the time to wait before this call will be authorized.
+It will allow you to set rate limiting, on several different time windows, per path/IP/whatever you want. If a time window limit was reached, this vmod will return you the time to wait before this call will be authorized.
 With this return information, you can handle rate limit overflow by either abruptly returning an error, or by actually waiting the necessary time if you deems it reasonable, for a smoother rate limit overflow handling.
 
-Please note that at the moment, there is no native way (AFAIK) to wait within Varnish (and no, using sleep() in the VCL is a *bad* idea), so you'll have to hack your way to it, e.g. redirect to a nodejs server that will wait for you and come back later.
-I'll try to see if I can hack a way within Varnish, e.g. with adding a new state in the caching state machine, which would be sleepAndRestart;
+Please note that at the moment, there is no native way (AFAIK) to wait within Varnish (and no, using sleep() in the VCL is a *bad* idea), so you'll have to hack your way to it, e.g. redirect to a separate server that will wait for you and come back later.
+
+Please read carefully the "Memory management and denial of service" section below to avoid misuses that could lead to denial of services.
 
 FUNCTIONS
 =========
@@ -61,22 +62,60 @@ Example
     API rate limiting: limit calls by IP and API call: max 2 req/s, 100 req/2h, 1000 req/d. If an API-key is given, allow more.::
 
             sub vcl_recv {
-                if(req.url ~ "^/my_api_path/") {
+                if(req.url ~ "^/my_api_path/my_api_name") {
                     //Consider using libvmod-redis to share apikey infos between Varnish && your api key management app
                     if(req.http.X-apikey *is valid*) {
-                        if(throttle.is_allowed("ip:" + client.ip" + ":api:" + req.url + ":auth", "5req/s, 10000req/d") > 0s) {
+                        if(throttle.is_allowed("ip:" + client.ip" + ":api:[my_api_name]:auth", "5req/s, 10000req/d") > 0s) {
                            error 429 "Calm down";
                         }
                     else
                     {
-                        if(throttle.is_allowed("ip:" + client.ip" + ":api:" + req.url, "2req/s, 100req/2h, 1000req/d") > 0s) {
+                        if(throttle.is_allowed("ip:" + client.ip" + ":api:[my_api_name]" + req.url, "2req/s, 100req/2h, 1000req/d") > 0s) {
                            error 429 "Calm down";
                         }
                     }
                 }
             }
 
-    WARNING: You cannot set 2 differents set of rate limits for a same key. (If you do, only one will be used, and the other will be ignored). In this example, simply add some extra text to the key to differentiate the authentificated calls from the non-authentificated ones.
+    Please note: You cannot set 2 differents set of rate limits for a same key. (If you do, only one will be used, and the other will be ignored). In this example, simply add some extra text to the key to differentiate the authentificated calls from the non-authentificated ones.
+
+MEMORY MANAGEMENT AND DENIAL OF SERVICE
+=======================================
+
+If used incorrectly, this tool could let an attacker force Varnish to consume all available memory and crash. It would be too bad to be DoS'ed by a tool that prevents DoS!
+What you need to know is that this vmod will keep in memory the time of the revelant last requests for each key you provide. And this memory is *outside* of the memory you specify to Varnish for caching. (So if you specify 4G of RAM to varnish, this vmod memory will be on top of it.)
+
+For a given key, the amount of necessary memory is at its maximum fixed to the maximum number of request limit you give to this key, multiplied by 16 bytes. For example:: 
+
+        if(throttle.is_allowed("pouet", "2req/s, 100req/h, 1000req/d") > 0s)
+
+For the key "pouet", the maximum memory usage will be 1000 (the maximum number between 2, 100, and 1000) multiplied by 16 bytes = 16 kbytes. Now, with a more advanced key::
+
+        if(throttle.is_allowed("ip:" + client.ip, "2req/s, 100req/3h, 1000req/d") > 0s)
+
+We now have one key per client IP, which will each consume 16kbytes maximum. That is potentially unlimited. So what you also need to know is that the request times are kept in memory until they get older than the biggest time window: here one day (the biggest between 1s, 3 hours and 1 day).
+So if you take an average of 10,000 differents IP per day, that would cost at the maximum (if every IP was making 1000 calls), 10,000 * 16kbytes = 160 mbytes. That begins to be quite a number. So one can reduce this number by keeping request limits lower. For example::
+
+        if(throttle.is_allowed("ip:" + client.ip, "2req/s, 30req/h") > 0s)
+
+This would reduce the maximum memory consumption, with 10,000 differents IP per day, to 10,000 * 30 * 16 = 4.8 mbytes. Much better. But wait! Now that we no longer have the 1 day window, the request times will only be kept for the new largest window, 1 hour. So if we have around 1,000 different IP per hour, that makes a maximum memory consumption of 1,000 * 30 * 16 = 480 kbytes. Muuch better! So we see that the time window sizes and lengths has a big impact on memory consumption.
+
+With the following example, we are theorically still open to distributed denial of service due to this vmod, but with the required number of necessary clients to consume all memory, it is much more likely that your backend services will fall and crash first. (And remember, we only use at maximum a fixed amount of memory per key, whatever the number of calls for this key).
+
+When we begin to be vulnerable to denial of service by a single user is when a single user can have an unlimited number of keys:
+
+        if(throttle.is_allowed("ip:" + client.ip + ":path:" + req.url, "2req/s, 30req/h") > 0s)
+
+With this example, you would limit the request rate per IP and per URL. A single user can thus create an unlimited number of keys, and thus consume an unlimited amount of memory, and make a denial of service by crashing varnish. So if you are in a case when you want to have different rate limits per path, it is a good idea to normalize the paths, and have a limited number of them only. For example::
+
+        if(req.url ~ "^/my_api_path/my_api_name") {
+            if(throttle.is_allowed("ip:" + client.ip + ":api:api_name", "2req/s, 30req/h") > 0s)
+
+Finally, if you want to want to track the memory usage of this throttle vmod , you can use this command::
+
+        if(req.url == "/my_admin_page") {
+            set resp.http.X-throttle-memusage = throttle.memory_usage();
+        }
 
 
 INSTALLATION
@@ -130,5 +169,4 @@ libvmod-example project. See LICENSE for details.
 TODO
 ====
 
-* Garbage collector
 * Test files
