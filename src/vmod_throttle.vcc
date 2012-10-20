@@ -1,4 +1,5 @@
 Module throttle
 Init init_function
 Function DURATION is_allowed(PRIV_VCL, STRING, STRING)
+Function INT remaining_calls(PRIV_VCL, STRING, STRING)
 Function INT memory_usage(PRIV_VCL)

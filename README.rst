@@ -47,6 +47,7 @@ Arguments
 Return value
 	DURATION
 Description
+    Increments the call counters.
     Returns 0.0 if the call was authorized, or the time to wait if one of the time window limit was reached.
 Example
     Prevent a single user (or crazy googlebot) to make a denial of service by punching through the cache: limit MISS calls on non-static assets by IP, max 3 req/s, 10 req/30s, 30 req/5m::
@@ -78,6 +79,39 @@ Example
             }
 
     Please note: You cannot set 2 differents set of rate limits for a same key. (If you do, only one will be used, and the other will be ignored). In this example, simply add some extra text to the key to differentiate the authentificated calls from the non-authentificated ones.
+
+
+remaining_calls
+---------------
+
+Prototype
+        ::
+
+                remaining_calls(STRING key, STRING rate_limit)
+Arguments
+    key: The unique key that will identify what you are throttling, used with the is_allowed() function.
+
+    rate_limit: A single rate limit, with the same syntax than in the is_allowed() function. It has to be one of the rate limits you defined in the is_allowed() function.
+Return value
+    INT
+Description
+    Return the number of remaining allowed calls for a given key, and for a given rate limitation.
+Example
+    In the API example above, show in a header the remaining calls for the hour::
+
+            sub vcl_recv {
+                if(req.url ~ "^/my_api_path/my_api_name") {
+                    if(throttle.is_allowed("ip:" + client.ip" + ":api:[my_api_name]", "5req/s, 100req/h") > 0s) {
+                       error 429 "Calm down";
+                    }
+                }
+            }
+
+            sub vlc_deliver {
+                if(req.url ~ "^/my_api_path/my_api_name") {
+                    set resp.http.X-throttle-remaining-calls = throttle.remaining_calls("ip:" + client.ip" + ":api:[my_api_name]", "100req/h");
+                }
+            }
 
 MEMORY MANAGEMENT AND DENIAL OF SERVICE
 =======================================

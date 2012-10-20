@@ -73,8 +73,84 @@ _vmod_hash(unsigned char *str) {
   return hash;
 }
 
+// Private: Parse a window limit list, return the current window limit, put the cursor at
+// the beginning of the next one.
+// A result window with a length of 0 means it failed to parse.
+struct vmodth_call_win _vmod_parse_win(char** wins) {
+    struct vmodth_call_win result;
+    int parsed_max = 0;
+    int parsed_length = 0;
+    char c;
+
+    //Init the result win
+    result.length = 0;
+    result.max_calls = 0;
+    result.nb_calls = 0;
+    result.last_call = NULL;
+
+    if(c = *(*wins)++) {
+      //Get rid of any whitespaces
+      while(c == ' ') {
+        c = *(*wins)++;
+      }
+
+      //Expecting a number
+      while(48 <= c && c <= 57) {
+        parsed_max = parsed_max*10 + (c - 48);
+        c = *(*wins)++;
+      }
+      if(parsed_max == 0) {
+        return result;
+      }
+
+      //Get rid of any whitespaces
+      while(c == ' ') {
+        c = *(*wins)++;
+      }
+
+      //Expecting the string "req/"
+      if(strncmp(--(*wins), "req/", 4) != 0) {
+        return result;
+      }
+      (*wins) += 4;
+      c = *(*wins)++;
+
+      //Expecting either a number and a duration qualitifer (s,m,h,d), or a duration qualitifer
+      while(48 <= c && c <= 57) {
+        parsed_length = parsed_length*10 + (c - 48);
+        c = *(*wins)++;
+      }
+      if(parsed_length == 0) {
+        parsed_length = 1;
+      }
+      if(c == 'm') {
+        parsed_length *= 60;
+      }
+      else if(c == 'h') {
+        parsed_length *= 3600;
+      }
+      else if(c == 'd') {
+        parsed_length *= 24*3600;
+      }
+
+      //Then expecting the next char to be either NULL or the ',' separator
+      c = *(*wins)++;
+      if(c != 0 && c != ',') {
+        return result;
+      }
+
+      //Now let's create the new win struct
+      result.length = parsed_length;
+      result.max_calls = parsed_max;
+      result.nb_calls = 0;
+      result.last_call = NULL;
+    }
+
+    return result;
+}
+
 // Private: Fetch or create the call set from the given key
-struct vmodth_calls* _vmod_get_call_set_from_key(struct vmodth_priv* priv, char* key, char* window_limits) {
+struct vmodth_calls* _vmod_get_call_set_from_key(struct vmodth_priv* priv, char* key, int create_if_not_existing, char* window_limits) {
   struct vmodth_calls* result = NULL;
   int hash_key;
 
@@ -91,86 +167,32 @@ struct vmodth_calls* _vmod_get_call_set_from_key(struct vmodth_priv* priv, char*
     cur = cur->next;
   }
 
-  //If not found, we have to create this new call set
-  if(!result) {
+  //If not found, and we are allowed to create, we have to create this new call set
+  if(!result && create_if_not_existing) {
     //First we do the parsing of the windows. If it fails, we will stop.
     struct vmodth_call_win* parsed_wins = NULL;
     int parsed_win_count = 0;
-    int parsed_max = 0;
-    int parsed_length = 0;
-    char c;
-    while(c = *window_limits++) {
-      //Init variables
-      parsed_max = 0;
-      parsed_length = 0;
+    struct vmodth_call_win parsed_win;
 
-      //Get rid of any whitespaces
-      while(c == ' ') {
-        c = *window_limits++;
-      }
+    //We parse windows until either we reached the end of string, or a parsing failed.
+    while(*window_limits) {
+      //Parse a window
+      parsed_win = _vmod_parse_win(&window_limits);
 
-      //Expecting a number
-      while(48 <= c && c <= 57) {
-        parsed_max = parsed_max*10 + (c - 48);
-        c = *window_limits++;
-      }
-      if(parsed_max == 0) {
+      if(!parsed_win.length) {
+        //Parsing failed. Quit.
         break;
       }
 
-      //Get rid of any whitespaces
-      while(c == ' ') {
-        c = *window_limits++;
-      }
-
-      //Expecting the string "req/"
-      if(strncmp(--window_limits, "req/", 4) != 0) {
-        break;
-      }
-      window_limits+=4;
-      c = *window_limits++;
-
-      //Expecting either a number and a duration qualitifer (s,m,h,d), or a duration qualitifer
-      while(48 <= c && c <= 57) {
-        parsed_length = parsed_length*10 + (c - 48);
-        c = *window_limits++;
-      }
-      if(parsed_length == 0) {
-        parsed_length = 1;
-      }
-      if(c == 'm') {
-        parsed_length *= 60;
-      }
-      else if(c == 'h') {
-        parsed_length *= 3600;
-      }
-      else if(c == 'd') {
-        parsed_length *= 24*3600;
-      }
-
-      //Then expecting the next char to be either NULL or the ',' separator
-      c = *window_limits++;
-      if(c != 0 && c != ',') {
-        break;
-      }
-
-      //Now let's create the new win struct
+      //Now let's copy the result in the window list
       parsed_win_count++;
-      if(parsed_win_count == 0) {
+      if(parsed_win_count == 1) {
         parsed_wins = malloc(sizeof(struct vmodth_call_win));
       }
       else {
         parsed_wins = realloc(parsed_wins, sizeof(struct vmodth_call_win) * parsed_win_count);
       }
-      parsed_wins[parsed_win_count - 1].length = parsed_length;
-      parsed_wins[parsed_win_count - 1].max_calls = parsed_max;
-      parsed_wins[parsed_win_count - 1].nb_calls = 0;
-      parsed_wins[parsed_win_count - 1].last_call = NULL;
-
-      //Finally, if the current character is null, just stop here
-      if(c == 0) {
-        break;
-      }
+      memcpy(parsed_wins + (parsed_win_count - 1), &parsed_win, sizeof(struct vmodth_call_win));
     }
 
     //If we failed to parse any window, return NULL
@@ -178,6 +200,7 @@ struct vmodth_calls* _vmod_get_call_set_from_key(struct vmodth_priv* priv, char*
       return result;
     }
 
+    //Create the actual vmodth_calls structure
     result = malloc(sizeof(struct vmodth_calls));
     AN(result);
     result->key = malloc(strlen(key) + 1);
@@ -367,7 +390,7 @@ vmod_is_allowed(struct sess *sp, struct vmod_priv *pc, const char* key, const ch
   LOCK_WRITE();
 
   //Get the call set for this given key
-  calls = _vmod_get_call_set_from_key(priv, key, window_limits);
+  calls = _vmod_get_call_set_from_key(priv, key, 1, window_limits);
   //calls can be NULL if the parsing of the windows failed
   if(calls == NULL) {
     UNLOCK();
@@ -430,6 +453,52 @@ vmod_is_allowed(struct sess *sp, struct vmod_priv *pc, const char* key, const ch
   //So everything is cleaned every 4096*16=65536 calls
   if((priv->total_accepted_calls & 0xf) == 0) {
     _vmod_garbage_collector(priv, (priv->total_accepted_calls >> 4) & 0xfff, now);
+  }
+
+  UNLOCK();
+
+  return result;
+}
+
+// Public: is_allowed VCL command
+int
+vmod_remaining_calls(struct sess *sp, struct vmod_priv *pc, const char* key, const char* window_limit) {
+  int result = -1;
+  char* window_limit_str;
+  struct vmodth_priv *priv;
+  struct vmodth_calls *calls;
+  struct vmodth_call_win win;
+
+  LOCK_READ();
+
+  //Our persistent data structure
+  priv = ((struct vmodth_priv*)pc->priv);
+  AN(priv);
+
+  //Get the call set for this given key
+  calls = _vmod_get_call_set_from_key(priv, key, 0, NULL);
+  if(calls == NULL) {
+    //calls not found, we return an error (-1)
+    UNLOCK();
+    return result;
+  }
+
+  //Now parse the window_limit
+  window_limit_str = window_limit;
+  win = _vmod_parse_win(&window_limit_str);
+
+  if(!win.length) {
+    //Parsing failed.
+    UNLOCK();
+    return result;
+  }
+
+  //Ok now let's iterate within the windows and find ours
+  for(int i = 0; i < calls->nb_wins; i++) {
+    if(calls->wins[i].max_calls == win.max_calls && calls->wins[i].length == win.length) {
+      //Found it! Return the remaining calls.
+      result = calls->wins[i].max_calls - calls->wins[i].nb_calls;
+    }
   }
 
   UNLOCK();
