@@ -19,8 +19,6 @@ import throttle;
 DESCRIPTION
 ===========
 
-Current status: Finished, going through tests before going to production. You're welcome to test it, but note that it was not used in production yet, AFAIK.
-
 This vmod most obvious uses are to handle denial of services by a single user (or bot) punching through the cache, or to set rate limits to API calls you provide.
 
 It will allow you to set rate limiting, on several different time windows, per path/IP/whatever you want. If a time window limit was reached, this vmod will return you the time to wait before this call will be authorized.
