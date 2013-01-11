@@ -30,7 +30,7 @@ Please read carefully the "Memory management and denial of service" section belo
 
     "This is far better than any result I've seen from either HAProxy or Nginx doing layer 7 inspection on such modest [test] hardware."
 
-*Happy user rate-limiting on the X-Forwarded-For header*
+*Happy user rate-limiting on the X-Forwarded-For header.*
 
 FUNCTIONS
 =========
