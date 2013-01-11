@@ -28,6 +28,10 @@ Please note that at the moment, there is no native way (AFAIK) to wait within Va
 
 Please read carefully the "Memory management and denial of service" section below to avoid misuses that could lead to denial of services.
 
+> "This is far better than any result I've seen from either HAProxy or Nginx doing layer 7 inspection on such modest [test] hardware."
+
+*Happy user rate-limiting on the X-Forwarded-For header*
+
 FUNCTIONS
 =========
 
