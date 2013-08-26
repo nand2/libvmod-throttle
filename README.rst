@@ -177,7 +177,6 @@ Make targets:
 
 * make - builds the vmod
 * make install - installs your vmod in `VMODDIR`
-* make check - runs the unit tests in ``src/tests/*.vtc``
 
 In your VCL you could then use this vmod along the following lines::
         
