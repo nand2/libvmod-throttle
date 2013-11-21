@@ -7,7 +7,7 @@ SRC = $(VARNISHSRC)
 DIR_PREFIX = /
 else
 SRC = $(top_srcdir)
-DIR_PREFIX = lib/libvmod-statsd/
+DIR_PREFIX = lib/libvmod-throttle/
 endif
 
 INCLUDES = -I$(SRC)/include -I$(SRC)
