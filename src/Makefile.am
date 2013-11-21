@@ -1,6 +1,23 @@
-INCLUDES = -I$(VARNISHSRC)/include -I$(VARNISHSRC)
+# if VARNISHSRC is defined on the command-line, use that. Otherwise, build
+# this the same as the modules that come with varnish (i.e. we're building
+# within the varnish src dir itself, and $(top_srcdir) is the varnish source).
+#
+if HAVE_VARNISHSRC
+SRC = $(VARNISHSRC)
+DIR_PREFIX = /
+else
+SRC = $(top_srcdir)
+DIR_PREFIX = lib/libvmod-statsd/
+endif
 
+INCLUDES = -I$(SRC)/include -I$(SRC)
+
+if HAVE_VMODDIR
 vmoddir = $(VMODDIR)
+else
+vmoddir = $(pkglibdir)/vmods
+endif
+
 vmod_LTLIBRARIES = libvmod_throttle.la
 
 libvmod_throttle_la_LDFLAGS = -module -export-dynamic -avoid-version
