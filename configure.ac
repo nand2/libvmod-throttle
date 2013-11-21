@@ -49,6 +49,7 @@ AC_CHECK_FILE([$VARNISHSRC/include/varnishapi.h],
 	[],
 	[AC_MSG_FAILURE(["$VARNISHSRC" is not a Varnish source directory])]
 )
+AM_CONDITIONAL(HAVE_VARNISHSRC, [test -n $VARNISHSRC])
 
 # Check that varnishtest is built in the varnish source directory
 AC_CHECK_FILE([$VARNISHSRC/bin/varnishtest/varnishtest],
@@ -64,6 +65,7 @@ if test "x$VMODDIR" = x; then
 		AC_MSG_FAILURE([Can't determine vmod installation directory])
 	fi
 fi
+AM_CONDITIONAL(HAVE_VMODDIR, [test -n $VMODDIR])
 
 AC_CONFIG_FILES([
 	Makefile
