@@ -27,8 +27,8 @@ libvmod_throttle_la_SOURCES = \
 	vcc_if.h \
 	vmod_throttle.c
 
-vcc_if.c vcc_if.h: $(SRC)/lib/libvmod_std/vmod.py $(top_srcdir)/src/vmod_throttle.vcc
-	@PYTHON@ $(SRC)/lib/libvmod_std/vmod.py $(top_srcdir)/src/vmod_throttle.vcc
+vcc_if.c vcc_if.h: $(SRC)/lib/libvmod_std/vmod.py $(top_srcdir)/$(DIR_PREFIX)src/vmod_throttle.vcc
+	@PYTHON@ $(SRC)/lib/libvmod_std/vmod.py $(top_srcdir)/$(DIR_PREFIX)src/vmod_throttle.vcc
 
 VMOD_TESTS = tests/*.vtc
 .PHONY: $(VMOD_TESTS)
