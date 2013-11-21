@@ -109,7 +109,7 @@ Example
                 }
             }
 
-            sub vlc_deliver {
+            sub vcl_deliver {
                 if(req.url ~ "^/my_api_path/my_api_name") {
                     set resp.http.X-throttle-remaining-calls = throttle.remaining_calls("ip:" + client.ip" + ":api:[my_api_name]", "100req/h");
                 }
