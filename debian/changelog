@@ -1,0 +1,5 @@
+libvmod-throttle (0.1) unstable; urgency=low
+
+  * First version
+
+ -- Lasse Karstensen <lkarsten@varnish-software.com>  Fri, 13 Dec 2013 12:45:00 +0100

@@ -1,0 +1,35 @@
+varnishtest "Basic throttle vmod tests"
+
+server s1 {
+       rxreq
+       txresp
+} -start
+
+varnish v1 -vcl+backend {
+	import throttle from "${vmod_topbuild}/src/.libs/libvmod_throttle.so";
+
+	sub vcl_recv {
+	}
+
+	sub vcl_deliver {
+		set resp.http.x-one = throttle.is_allowed("" + client.ip, "2req/60s");
+		set resp.http.x-two = throttle.is_allowed("" + client.ip, "2req/60s");
+		set resp.http.x-three = throttle.is_allowed("" + client.ip, "2req/60s");
+
+		set resp.http.X-throttle-remaining-calls = throttle.remaining_calls("" + client.ip, "100req/h");
+		# no < in varnishtest.
+		set resp.http.X-mem = throttle.memory_usage();
+		if (throttle.memory_usage() < 50000) { set resp.http.x-mem-sane = 1; }
+	}
+} -start
+
+client c1 {
+	txreq -url "/"
+	rxresp
+	expect resp.http.x-two == 0.000
+	expect resp.http.x-three == 60.000
+	expect resp.http.X-throttle-remaining-calls == -1
+	expect resp.http.x-mem-sane == 1
+}
+
+client c1 -run
